@@ -178,18 +178,24 @@ async function scrapeUrlMarkdown(url) {
 
   if (!apiKey) return null;
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 3000); // 3-second timeout limit
+
   try {
     const response = await fetch(`${endpoint}?url=${encodeURIComponent(url)}`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${apiKey}`
-      }
+      },
+      signal: controller.signal
     });
 
+    clearTimeout(timeoutId);
     if (!response.ok) return null;
     const data = await response.json();
     return data.markdown || null;
   } catch (error) {
+    clearTimeout(timeoutId);
     console.error(`Failed to scrape URL ${url}:`, error.message);
     return null;
   }
@@ -199,7 +205,8 @@ async function extractFacts(searchResults) {
   const results = searchResults.results || [];
   const extractedFacts = [];
 
-  const scrapePromises = results.slice(0, 2).map(async (r) => {
+  // Scrape only the top 1 result for efficiency and to fit in Netlify timeouts
+  const scrapePromises = results.slice(0, 1).map(async (r) => {
     try {
       const markdown = await scrapeUrlMarkdown(r.url);
       return { ...r, markdown };
@@ -209,7 +216,7 @@ async function extractFacts(searchResults) {
   });
 
   const enrichedResults = await Promise.all(scrapePromises);
-  const remainingResults = results.slice(2).map(r => ({ ...r, markdown: null }));
+  const remainingResults = results.slice(1).map(r => ({ ...r, markdown: null }));
   const allResults = [...enrichedResults, ...remainingResults];
 
   let factId = 1;
